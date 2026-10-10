@@ -1,0 +1,23 @@
+================================================================================
+Comment kinds
+================================================================================
+
+### Resource comment
+
+## Group comment
+
+# Attached comment
+msg = Value
+#
+
+--------------------------------------------------------------------------------
+
+(resource
+  (resource_comment)
+  (group_comment)
+  (comment)
+  (message
+    (identifier)
+    (pattern
+      (text)))
+  (comment))

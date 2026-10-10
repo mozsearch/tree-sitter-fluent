@@ -1,0 +1,196 @@
+================================================================================
+References
+================================================================================
+
+msg = { $count } { other-msg } { other-msg.title } { -brand-name } { -brand-name.gender }
+
+--------------------------------------------------------------------------------
+
+(resource
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (variable_reference
+          (identifier)))
+      (text)
+      (placeable
+        (message_reference
+          (identifier)))
+      (text)
+      (placeable
+        (message_reference
+          (identifier)
+          (identifier)))
+      (text)
+      (placeable
+        (term_reference
+          (term_identifier)))
+      (text)
+      (placeable
+        (term_reference
+          (term_identifier)
+          (identifier))))))
+
+================================================================================
+Functions and named arguments
+================================================================================
+
+size = { NUMBER($size, maximumFractionDigits: 2) } MB
+date = { DATETIME($d, month: "long") }
+
+--------------------------------------------------------------------------------
+
+(resource
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (function_reference
+          (identifier)
+          (call_arguments
+            (variable_reference
+              (identifier))
+            (named_argument
+              (identifier)
+              (number_literal)))))
+      (text)))
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (function_reference
+          (identifier)
+          (call_arguments
+            (variable_reference
+              (identifier))
+            (named_argument
+              (identifier)
+              (string_literal))))))))
+
+================================================================================
+Term arguments
+================================================================================
+
+-https = https://{ $host }
+link = { -https(host: "example.com") }
+
+--------------------------------------------------------------------------------
+
+(resource
+  (term
+    (term_identifier)
+    (pattern
+      (text)
+      (placeable
+        (variable_reference
+          (identifier)))))
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (term_reference
+          (term_identifier)
+          (call_arguments
+            (named_argument
+              (identifier)
+              (string_literal))))))))
+
+================================================================================
+Literals
+================================================================================
+
+lit = { "\u00A0" } and { -3.14 }
+
+--------------------------------------------------------------------------------
+
+(resource
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (string_literal))
+      (text)
+      (placeable
+        (number_literal)))))
+
+================================================================================
+Select expression
+================================================================================
+
+tabs =
+    { $count ->
+        [one] One tab
+       *[other] { $count } tabs
+    }
+
+--------------------------------------------------------------------------------
+
+(resource
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (select_expression
+          (variable_reference
+            (identifier))
+          (variant
+            (variant_key
+              (identifier))
+            (pattern
+              (text)))
+          (variant
+            (variant_key
+              (identifier))
+            (pattern
+              (placeable
+                (variable_reference
+                  (identifier)))
+              (text))))))))
+
+================================================================================
+Select on a term attribute
+================================================================================
+
+a = { -brand.gender ->
+    [feminine] F
+   *[other] O
+}
+
+--------------------------------------------------------------------------------
+
+(resource
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (select_expression
+          (term_reference
+            (term_identifier)
+            (identifier))
+          (variant
+            (variant_key
+              (identifier))
+            (pattern
+              (text)))
+          (variant
+            (variant_key
+              (identifier))
+            (pattern
+              (text))))))))
+
+================================================================================
+Nested placeable
+================================================================================
+
+n = { { "{" } }
+
+--------------------------------------------------------------------------------
+
+(resource
+  (message
+    (identifier)
+    (pattern
+      (placeable
+        (placeable
+          (string_literal))))))

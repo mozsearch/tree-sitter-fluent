@@ -1,12 +1,10 @@
 {
   "name": "tree-sitter-fluent",
-  "version": "0.0.1",
-  "description": "Fluent grammar for tree-sitter",
-  "main": "index.js",
+  "version": "0.1.0",
+  "description": "Fluent (Project Fluent localization) grammar for tree-sitter",
   "scripts": {
-    "build": "tree-sitter generate && node-gyp build",
-    "profile": "tree-sitter parse examples --quiet --time",
-    "test": "vows test/test-*.js && tree-sitter test && eslint grammar.js dsl test"
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
   },
   "keywords": [
     "parser",
@@ -15,11 +13,14 @@
   ],
   "author": "Axel Hecht",
   "license": "Apache-2.0",
-  "dependencies": {
-    "nan": "^2.4.0"
-  },
   "devDependencies": {
-    "eslint": "^5.0.0-alpha.1",
-    "tree-sitter-cli": "^0.11.3"
+    "tree-sitter-cli": "0.25.4"
+  },
+  "contributors": [
+    "Andrew Sutherland <asutherland@asutherland.org>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mozsearch/tree-sitter-fluent"
   }
 }

@@ -1,86 +1,207 @@
-/* global grammar, choice, optional, repeat, repeat1, seq */
-/* eslint no-control-regex: "off" */
-/* eslint no-unused-vars: ["error", { "args": "none" }] */
+/**
+ * @file Fluent (https://projectfluent.org/) grammar for tree-sitter, after
+ * the Fluent Syntax 1.0 EBNF (spec/fluent.ebnf in projectfluent/fluent).
+ *
+ * Whitespace is significant: there are no extras, and the external scanner
+ * (src/scanner.c) decides what a line break followed by indentation starts:
+ * more text of the pattern, a block placeable, an attribute, or a variant.
+ * Otherwise the line break ends the entry.
+ *
+ * Junk (unparseable content) is left to tree-sitter's error recovery.
+ */
 
-const { ranges_without } = require('./dsl');
+/* eslint-disable arrow-parens, camelcase */
+/// <reference types="tree-sitter-cli/dsl" />
+// @ts-check
 
-// https://www.w3.org/TR/REC-xml/#NT-Char
-// excluding two-word, \u{010000}-\u{10FFFF}
-const NT_Char = '\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD';
+const BLANK = /([ ]|\r?\n)+/;
+const COMMENT_TEXT = /([^\r\n]|\r+[^\r\n])*\r*/;
+
+/**
+ * @param {RuleOrLiteral} rule
+ * @param {RuleOrLiteral} separator
+ */
+function sepByWithTrailing(rule, separator) {
+  return seq(rule, repeat(seq(separator, rule)), optional(separator));
+}
 
 module.exports = grammar({
   name: 'fluent',
 
-  extras: $ => [],
+  extras: _ => [],
+
+  externals: $ => [
+    $._text_line,
+    $._placeable_line,
+    $._attribute_line,
+    $._variant_line,
+  ],
 
   rules: {
-    body: $ => seq(
-      repeat($._blank_line),
-      repeat(seq(
-        $._entry,
-        $._line_break,
-        repeat($._blank_line)
+    resource: $ => seq(
+      repeat(choice(
+        seq($._entry, $._line_end),
+        $._comment_line,
+        $._blank_line,
       )),
-      optional($._entry)
+      optional(choice($._entry, $._comment, $._blank_inline)),
     ),
 
-    _entry: $ => choice(
-      $._comment,
-      $.term,
-      $.message
-    ),
+    _entry: $ => choice($.message, $.term),
 
-    _comment: $ => choice(
-      $.resource_comment,
-      $.block_comment,
-      $.comment),
-    resource_comment: $ => seq('###', optional(/[ \t].*/)),
-    block_comment: $ => seq('##', optional(/[ \t].*/)),
-    comment: $ => seq('#', optional(/[ \t].*/)),
-
-    identifier: $ => /[a-zA-Z][a-zA-Z_0-9_-]+/,
-    term_identifier: $ => /-[a-zA-Z][a-zA-Z_0-9_-]+/,
-    external_identifier: $ => /\$[a-zA-Z][a-zA-Z_0-9_-]+/,
-
-    /* line feed, carriage return; space, tab */
-    _line_break: $ => /[\u000A\u000D]+/,
-    _inline_space: $ => /[\u0020\u0009]+/,
-    _blank_line: $ =>  seq(optional($._inline_space), $._line_break),
-
-    /* if you break lines you need to indent afterwards */
-    _break_indent: $ => seq($._line_break, $._inline_space),
-
-    _inline_char: $ => ranges_without(NT_Char, '\r\n\\{'),
-    _char: $ => choice($._inline_char, $._line_break),
-    _hexdigit: $ => /[0-9a-fA-F]/,
-    _text: $ => repeat1(
-      choice(
-        $._inline_char,
-        '\\{',
-        seq('\\u', $._hexdigit, $._hexdigit, $._hexdigit, $._hexdigit),
-        /\\[\\{]/
-      )
-    ),
+    // Comments: "#" (standalone or attached to the next entry), "##" (group)
+    // and "###" (resource).
+    _comment_line: $ => seq($._comment, $._line_end),
+    _comment: $ => choice($.comment, $.group_comment, $.resource_comment),
+    comment: _ => token(seq('#', optional(seq(' ', COMMENT_TEXT)))),
+    group_comment: _ => token(seq('##', optional(seq(' ', COMMENT_TEXT)))),
+    resource_comment: _ => token(seq('###', optional(seq(' ', COMMENT_TEXT)))),
 
     message: $ => seq(
-      $.identifier,
-      optional($._inline_space), '=', optional($._inline_space),
-      $.pattern
+      field('id', $.identifier),
+      optional($._blank_inline),
+      '=',
+      optional($._blank_inline),
+      choice(
+        seq(field('value', $.pattern), repeat($.attribute)),
+        repeat1($.attribute),
+      ),
     ),
 
+    // (Terms' identifiers include their "-", so that they're distinct from
+    // messages' everywhere, ex: as history contexts.)
     term: $ => seq(
-      $.term_identifier,
-      optional($._inline_space), '=', optional($._inline_space),
-      $.pattern
+      field('id', $.term_identifier),
+      optional($._blank_inline),
+      '=',
+      optional($._blank_inline),
+      field('value', $.pattern),
+      repeat($.attribute),
     ),
 
     attribute: $ => seq(
-      $._break_indent,  // required indent
-      '.', $.identifier,
-      optional($._inline_space), '=', optional($._inline_space),
-      $.pattern
+      $._attribute_line,
+      '.',
+      field('id', $.identifier),
+      optional($._blank_inline),
+      '=',
+      optional($._blank_inline),
+      field('value', $.pattern),
     ),
 
-    pattern: $ => $._text
-  }
+    pattern: $ => repeat1(choice(
+      $.text,
+      $.placeable,
+      seq($._text_line, $.text),
+      seq($._placeable_line, $.placeable),
+    )),
+
+    // (A carriage return is text unless it's in a line end.)
+    text: _ => /([^{}\r\n]|\r+[^{}\r\n])+\r*/,
+
+    placeable: $ => seq(
+      '{',
+      optional($._blank),
+      field('expression', choice($.select_expression, $._inline_expression)),
+      optional($._blank),
+      '}',
+    ),
+
+    _inline_expression: $ => choice(
+      $.string_literal,
+      $.number_literal,
+      $.function_reference,
+      $.message_reference,
+      $.term_reference,
+      $.variable_reference,
+      $.placeable,
+    ),
+
+    string_literal: _ => token(seq(
+      '"',
+      repeat(choice(
+        /[^"\\\r\n]/,
+        /\\[\\"]/,
+        /\\u[0-9a-fA-F]{4}/,
+        /\\U[0-9a-fA-F]{6}/,
+      )),
+      '"',
+    )),
+
+    number_literal: _ => /-?[0-9]+(\.[0-9]+)?/,
+
+    function_reference: $ => seq(
+      field('id', $.identifier),
+      field('arguments', $.call_arguments),
+    ),
+
+    message_reference: $ => seq(
+      field('id', $.identifier),
+      optional(seq('.', field('attribute', $.identifier))),
+    ),
+
+    term_reference: $ => seq(
+      field('id', $.term_identifier),
+      optional(seq('.', field('attribute', $.identifier))),
+      optional(field('arguments', $.call_arguments)),
+    ),
+
+    variable_reference: $ => seq('$', field('id', $.identifier)),
+
+    // (Blanks before "(" and ":" are in their tokens, so that what follows
+    // an identifier is known from the next token.)
+    call_arguments: $ => seq(
+      alias(token(seq(optional(BLANK), '(')), '('),
+      optional($._blank),
+      optional(sepByWithTrailing(
+        $._argument,
+        seq(optional($._blank), ',', optional($._blank)),
+      )),
+      optional($._blank),
+      ')',
+    ),
+
+    _argument: $ => choice($.named_argument, $._inline_expression),
+
+    named_argument: $ => seq(
+      field('name', $.identifier),
+      alias(token(seq(optional(BLANK), ':')), ':'),
+      optional($._blank),
+      field('value', choice($.string_literal, $.number_literal)),
+    ),
+
+    select_expression: $ => seq(
+      field('selector', $._inline_expression),
+      optional($._blank),
+      '->',
+      optional($._blank_inline),
+      repeat1($.variant),
+      $._line_end,
+    ),
+
+    variant: $ => seq(
+      $._variant_line,
+      optional(field('default', '*')),
+      field('key', $.variant_key),
+      optional($._blank_inline),
+      field('value', $.pattern),
+    ),
+
+    variant_key: $ => seq(
+      '[',
+      optional($._blank),
+      choice($.number_literal, $.identifier),
+      optional($._blank),
+      ']',
+    ),
+
+    identifier: _ => /[a-zA-Z][a-zA-Z0-9_-]*/,
+    term_identifier: _ => /-[a-zA-Z][a-zA-Z0-9_-]*/,
+
+    // (Leading spaces of a pattern aren't text.)
+    _blank_inline: _ => token(prec(1, /[ ]+/)),
+    _blank: _ => BLANK,
+    _line_end: _ => /\r?\n/,
+    _blank_line: _ => /[ ]*\r?\n/,
+  },
 });
